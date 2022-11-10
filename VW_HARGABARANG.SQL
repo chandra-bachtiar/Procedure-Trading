@@ -1,0 +1,110 @@
+CREATE PROCEDURE VW_HARGABARANG(
+  GUDANG VARCHAR(20),
+  CARI VARCHAR(200),
+  CUSTOMER VARCHAR(20))
+RETURNS(
+  KODE_BARANG VARCHAR(20),
+  BARCODE VARCHAR(20),
+  KODE_SATUAN VARCHAR(6),
+  NAMA_BARANG VARCHAR(200),
+  OTHER_NAME VARCHAR(200),
+  KODE_GROUPBARANG VARCHAR(20),
+  KODE_RAKBARANG VARCHAR(20),
+  ARTIKEL_1 VARCHAR(200),
+  ARTIKEL_2 VARCHAR(200),
+  ARTIKEL_3 VARCHAR(200),
+  ARTIKEL_4 VARCHAR(200),
+  ARTIKEL_5 VARCHAR(200),
+  NAMA_LAINNYA VARCHAR(200),
+  HARGA_BELI DECIMAL(18, 2),
+  HARGA_BELI_KOTOR DECIMAL(18, 2),
+  HARGA_JUAL DECIMAL(18, 2),
+  HARGA_JUAL2 DECIMAL(18, 2),
+  HARGA_JUAL3 DECIMAL(18, 2),
+  HARGA_JUAL4 DECIMAL(18, 2),
+  HARGA_JUAL5 DECIMAL(18, 2),
+  HARGA_CUSTOMER DECIMAL(18, 2))
+AS
+DECLARE VARIABLE GUDANG_HARGA_MASING SMALLINT;
+DECLARE VARIABLE GUDANG_STANDAR SMALLINT;
+DECLARE VARIABLE CUSTOM_HARGAJUAL DECIMAL(18, 2);
+DECLARE VARIABLE CUSTOM_STATUS VARCHAR(20);
+BEGIN
+  -- cek config
+   gudang_HARGA_masing = 0;
+   select gudang_HARGA_masing
+   from mst_config
+   into :gudang_HARGA_masing;
+   gudang_harga_masing = coalesce(gudang_harga_masing,0);
+   
+ -- SELECT GUDANG
+ 	GUDANG_STANDAR = 0;
+    SELECT COALESCE(STANDAR,0) FROM MST_GUDANG WHERE KODE_GUDANG = :GUDANG
+    INTO :GUDANG_STANDAR;
+    
+	FOR
+      EXECUTE STATEMENT
+      'SELECT
+      A.KODE_BARANG,
+      A.NAMA_BARANG,
+      A.ARTIKEL_1,
+      A.ARTIKEL_2,
+      A.ARTIKEL_3,
+      A.ARTIKEL_4,
+      A.ARTIKEL_5,
+      A.NAMA_BARANG_OTHER,
+      B.KODE_JUAL,
+      B.KODE_SATUAN, ' ||
+      IIF(GUDANG_HARGA_MASING=1 and coalesce(GUDANG_STANDAR,0)=0,'C.HARGA_POKOK,','B.HARGA_POKOK,') ||
+      IIF(GUDANG_HARGA_MASING=1 and coalesce(GUDANG_STANDAR,0)=0,'C.HARGA_POKOK,','B.HARGA_POKOK_KOTOR,') ||
+      IIF(GUDANG_HARGA_MASING=1 and coalesce(GUDANG_STANDAR,0)=0,'C.HARGA_JUAL,','B.HARGA_JUAL,') ||
+      IIF(GUDANG_HARGA_MASING=1 and coalesce(GUDANG_STANDAR,0)=0,'C.HARGA_JUAL2,','B.HARGA_JUAL2,') ||
+      IIF(GUDANG_HARGA_MASING=1 and coalesce(GUDANG_STANDAR,0)=0,'C.HARGA_JUAL3,','B.HARGA_JUAL3,') ||
+      IIF(GUDANG_HARGA_MASING=1 and coalesce(GUDANG_STANDAR,0)=0,'C.HARGA_JUAL4,','B.HARGA_JUAL4,') ||
+      IIF(GUDANG_HARGA_MASING=1 and coalesce(GUDANG_STANDAR,0)=0,'C.HARGA_JUAL5','B.HARGA_JUAL5') || '
+      FROM MST_BARANG A
+      INNER JOIN MST_BARANG_JUAL B ON B.KODE_BARANG = A.KODE_BARANG
+      LEFT JOIN MST_BARANG_JUAL_GUDANG C ON C.KODE_JUAL = B.KODE_JUAL AND C.KODE_SATUAN = B.KODE_SATUAN AND C.KODE_GUDANG = ''' || :GUDANG || '''
+ 	  WHERE (
+      A.NAMA_BARANG LIKE ''' || '%' || :CARI || '%' || ''' OR
+      A.KODE_GROUPBARANG LIKE ''' || '%' || :CARI || '%' || ''' OR
+      A.NAMA_BARANG_OTHER LIKE ''' || '%' || :CARI || '%' || ''' OR
+      B.KODE_JUAL LIKE ''' || '%' || :CARI || '%' || ''' OR
+      A.ARTIKEL_3 LIKE ''' || '%' || :CARI || '%' || ''')'
+      INTO
+      :KODE_BARANG,
+      :NAMA_BARANG,
+	  :ARTIKEL_1,
+      :ARTIKEL_2,
+      :ARTIKEL_3,
+      :ARTIKEL_4,
+      :ARTIKEL_5,
+      :NAMA_LAINNYA,
+      :BARCODE,
+      :KODE_SATUAN,
+      :HARGA_BELI,
+      :HARGA_BELI_KOTOR,
+      :HARGA_JUAL,
+      :HARGA_JUAL2,
+      :HARGA_JUAL3,
+      :HARGA_JUAL4,
+      :HARGA_JUAL5
+   DO
+   BEGIN
+     --CARI HARGA CUSTOMER
+      custom_hargajual = 0;HARGA_CUSTOMER = 0;custom_status = '';
+      if (customer = '') then customer = null;  
+                                                         
+      select harga_jual, status
+      from vw_customeharga(:CUSTOMER, :BARCODE, :KODE_BARANG,:KODE_SATUAN, :GUDANG)
+      into :custom_hargajual, :custom_status;
+
+      custom_status = coalesce(custom_status,'not found');
+      if (custom_status = 'found') then
+         begin      
+           HARGA_CUSTOMER = CUSTOM_HARGAJUAL;
+         end
+      
+      SUSPEND; 
+   END
+END;
